@@ -76,6 +76,31 @@ impl Board {
                     }
                 }
             }
+            // implmenet technique when a cell is an only possible place
+            // to put a number in a col/row/square
+            let cols = board.all_cols();
+            let rows = board.all_rows();
+            let squares = board.all_squares();
+            for n in 1..10 {
+                for col in cols.iter().chain(rows.iter()).chain(squares.iter()) {
+                    if col.iter().filter(|&cell| cell.2.contains(&n)).count() == 1 {
+                        let (&x, &y) = col
+                            .iter()
+                            .find_map(|(x, y, candidates)| {
+                                if candidates.contains(&n) {
+                                    Some((x, y))
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap();
+                        if board.values[x][y].len() > 1 {
+                            board.values[x][y].retain(|&candidate| candidate == n);
+                            board_changed = true;
+                        }
+                    }
+                }
+            }
         }
         for x in 0..9 {
             for y in 0..9 {
@@ -137,6 +162,60 @@ impl SolvingBoard {
                 }
             })
             .flatten()
+            .collect()
+    }
+    fn all_cols(&self) -> Vec<Vec<(usize, usize, Vec<u8>)>> {
+        self.values
+            .clone()
+            .into_iter()
+            .enumerate()
+            .map(|(x, col)| {
+                col.into_iter()
+                    .enumerate()
+                    .map(|(y, cell)| (x, y, cell))
+                    .collect()
+            })
+            .collect()
+    }
+    fn all_rows(&self) -> Vec<Vec<(usize, usize, Vec<u8>)>> {
+        (0..9)
+            .map(|y| {
+                self.values
+                    .iter()
+                    .enumerate()
+                    .map(|(x, col)| (x, y, col[y].clone()))
+                    .collect()
+            })
+            .collect()
+    }
+    fn all_squares(&self) -> Vec<Vec<(usize, usize, Vec<u8>)>> {
+        (0..9)
+            .map(|i| (i % 3, i / 3))
+            .map(|(square_x, square_y)| {
+                self.values
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(x, col)| {
+                        if x / 3 == square_x {
+                            Some(
+                                col.iter()
+                                    .enumerate()
+                                    .filter_map(|(y, cell)| {
+                                        if y / 3 == square_y {
+                                            Some((x, y, cell.clone()))
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .collect::<Vec<_>>(),
+                            )
+                        } else {
+                            None
+                        }
+                    })
+                    .flatten()
+                    .collect()
+            })
             .collect()
     }
 }
