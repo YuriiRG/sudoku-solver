@@ -1,4 +1,4 @@
-use std::io::stdout;
+use std::{io::stdout, iter::repeat};
 
 use anyhow::Result;
 
@@ -9,9 +9,10 @@ use ratatui::{
         terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
         ExecutableCommand,
     },
-    layout::Rect,
+    layout::{Constraint, Layout, Rect},
     style::Stylize,
-    text::ToText,
+    symbols,
+    text::{Line, ToText},
     widgets::{Block, Borders, Paragraph},
     Terminal,
 };
@@ -259,7 +260,30 @@ fn main() -> Result<()> {
             frame.render_widget(Block::new().borders(Borders::LEFT), Rect::new(7, 0, 1, 11));
             frame.render_widget(Block::new().borders(Borders::TOP), Rect::new(0, 3, 11, 1));
             frame.render_widget(Block::new().borders(Borders::TOP), Rect::new(0, 7, 11, 1));
-
+            frame.render_widget(Paragraph::new(symbols::line::CROSS), Rect::new(3, 3, 1, 1));
+            frame.render_widget(Paragraph::new(symbols::line::CROSS), Rect::new(3, 7, 1, 1));
+            frame.render_widget(Paragraph::new(symbols::line::CROSS), Rect::new(7, 3, 1, 1));
+            frame.render_widget(Paragraph::new(symbols::line::CROSS), Rect::new(7, 7, 1, 1));
+            let main_layout =
+                Layout::horizontal([Constraint::Length(12), Constraint::Min(0)]).split(frame_size);
+            let instructions =
+                Layout::vertical(repeat(Constraint::Length(1)).take(4)).split(main_layout[1]);
+            frame.render_widget(
+                Paragraph::new(Line::from(vec!["Navigation ".into(), "<Arrows>".bold()])),
+                instructions[0],
+            );
+            frame.render_widget(
+                Paragraph::new(Line::from(vec!["Solve ".into(), "<S>".bold()])),
+                instructions[1],
+            );
+            frame.render_widget(
+                Paragraph::new(Line::from(vec!["Reset ".into(), "<R>".bold()])),
+                instructions[2],
+            );
+            frame.render_widget(
+                Paragraph::new(Line::from(vec!["Quit ".into(), "<Q>".bold()])),
+                instructions[3],
+            );
             for x in 0..9 {
                 for y in 0..9 {
                     let position = Rect::new(x + x / 3, y + y / 3, 1, 1);
@@ -326,12 +350,14 @@ fn main() -> Result<()> {
                             Err(()) => app.is_error = true,
                         };
                     }
+                    KeyCode::Char('r') => {
+                        app.board = Board::default();
+                    }
                     _ => {}
                 }
             }
         }
     }
-    // TODO main loop
 
     stdout().execute(LeaveAlternateScreen)?;
     disable_raw_mode()?;
