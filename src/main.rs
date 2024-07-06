@@ -55,11 +55,14 @@ impl Board {
     fn solve(&mut self) -> Result<(), ()> {
         let mut board: SolvingBoard = (*self).into();
         let mut board_changed = true;
+
         while board_changed {
             board_changed = false;
+            // techinque where only one number is possible in a specific cell
             for x in 0..9 {
                 for y in 0..9 {
-                    if board.values[x][y].len() > 1 {
+                    let old_len = board.values[x][y].len();
+                    if old_len > 1 {
                         let col = board.col(x);
                         let row = board.row(y);
                         let square = board.square(x, y);
@@ -67,7 +70,7 @@ impl Board {
                         for num in col.into_iter().chain(row).chain(square) {
                             candidates.retain(|&candidate| candidate != num);
                         }
-                        if candidates.len() == 1 {
+                        if candidates.len() < old_len {
                             board_changed = true;
                         }
                         if candidates.is_empty() {
@@ -76,15 +79,15 @@ impl Board {
                     }
                 }
             }
-            // implmenet technique when a cell is an only possible place
+            // technique when a cell is an only possible place
             // to put a number in a col/row/square
             let cols = board.all_cols();
             let rows = board.all_rows();
             let squares = board.all_squares();
             for n in 1..10 {
-                for col in cols.iter().chain(rows.iter()).chain(squares.iter()) {
-                    if col.iter().filter(|&cell| cell.2.contains(&n)).count() == 1 {
-                        let (&x, &y) = col
+                for group in cols.iter().chain(rows.iter()).chain(squares.iter()) {
+                    if group.iter().filter(|&cell| cell.2.contains(&n)).count() == 1 {
+                        let (&x, &y) = group
                             .iter()
                             .find_map(|(x, y, candidates)| {
                                 if candidates.contains(&n) {
@@ -98,10 +101,14 @@ impl Board {
                             board.values[x][y].retain(|&candidate| candidate == n);
                             board_changed = true;
                         }
+                        if board.values[x][y].is_empty() {
+                            return Err(());
+                        }
                     }
                 }
             }
         }
+
         for x in 0..9 {
             for y in 0..9 {
                 let candidates = &board.values[x][y];
