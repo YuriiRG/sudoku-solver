@@ -1,4 +1,9 @@
-use std::{io::stdout, iter::repeat};
+use std::{
+    fs::OpenOptions,
+    io::{stdout, Write},
+    iter::repeat,
+    time::Instant,
+};
 
 use anyhow::Result;
 
@@ -116,6 +121,63 @@ impl Board {
     }
     fn solve(&mut self) -> Result<(), ()> {
         let mut board: SolvingBoard = (*self).into();
+
+        board.solve()?;
+
+        for x in 0..9 {
+            for y in 0..9 {
+                let candidates = &board.values[x][y];
+                self.values[x][y] = candidates.definitive_value();
+            }
+        }
+        Ok(())
+    }
+}
+
+impl IntoIterator for SolvingCell {
+    type Item = u8;
+
+    type IntoIter = SolvingCellIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        SolvingCellIter::new(self)
+    }
+}
+
+struct SolvingCellIter {
+    index: usize,
+    value: SolvingCell,
+}
+
+impl SolvingCellIter {
+    fn new(cell: SolvingCell) -> Self {
+        Self {
+            index: 0,
+            value: cell,
+        }
+    }
+}
+
+impl Iterator for SolvingCellIter {
+    type Item = u8;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self.value.0.get(self.index) {
+                Some(true) => {
+                    self.index += 1;
+                    return Some(self.index as u8);
+                }
+                Some(false) => self.index += 1,
+                None => return None,
+            }
+        }
+    }
+}
+
+impl SolvingBoard {
+    fn solve(&mut self) -> Result<(), ()> {
+        // let start = Instant::now();
         let mut board_changed = true;
 
         while board_changed {
@@ -123,12 +185,12 @@ impl Board {
             // techinque where only one number is possible in a specific cell
             for x in 0..9 {
                 for y in 0..9 {
-                    let old_count = board.values[x][y].count();
+                    let old_count = self.values[x][y].count();
                     if old_count > 1 {
-                        let col = board.col(x);
-                        let row = board.row(y);
-                        let square = board.square(x, y);
-                        let candidates = &mut board.values[x][y];
+                        let col = self.col(x);
+                        let row = self.row(y);
+                        let square = self.square(x, y);
+                        let candidates = &mut self.values[x][y];
                         for num in col.into_iter().chain(row).chain(square) {
                             candidates.eliminate(num);
                         }
@@ -141,11 +203,11 @@ impl Board {
                     }
                 }
             }
-            // technique when a cell is an only possible place
+            // technique where a cell is an only possible place
             // to put a number in a col/row/square
-            let cols = board.all_cols();
-            let rows = board.all_rows();
-            let squares = board.all_squares();
+            let cols = self.all_cols();
+            let rows = self.all_rows();
+            let squares = self.all_squares();
             for n in 1..10 {
                 for group in cols.iter().chain(rows.iter()).chain(squares.iter()) {
                     if group.iter().filter(|&cell| cell.2.contains(n)).count() == 1 {
@@ -153,29 +215,67 @@ impl Board {
                             .iter()
                             .find_map(|(x, y, candidates)| candidates.contains(n).then_some((x, y)))
                             .unwrap();
-                        if board.values[x][y].is_invalid() {
+                        if self.values[x][y].is_invalid() {
                             return Err(());
                         }
-                        if !board.values[x][y].is_definitive() {
-                            board.values[x][y].leave_only(n);
+                        if !self.values[x][y].is_definitive() {
+                            self.values[x][y].leave_only(n);
                             board_changed = true;
                         }
                     }
                 }
             }
         }
-
-        for x in 0..9 {
-            for y in 0..9 {
-                let candidates = &board.values[x][y];
-                self.values[x][y] = candidates.definitive_value();
+        if !self
+            .values
+            .iter()
+            .map(|col| col.iter().all(|cell| cell.is_definitive()))
+            .all(|is_definitive| is_definitive)
+        {
+            let bruteforce_success = self.bruteforce_solve();
+            if !bruteforce_success {
+                panic!(
+                    "Bruteforce wasn't successful. It's impossible, so there's a bug in the code."
+                );
             }
         }
+        // writeln!(
+        //     OpenOptions::new().append(true).open("debug.txt").unwrap(),
+        //     "{}",
+        //     start.elapsed().as_micros(),
+        // )
+        // .unwrap();
         Ok(())
     }
-}
 
-impl SolvingBoard {
+    fn bruteforce_solve(&mut self) -> bool {
+        for x in 0..9 {
+            for y in 0..9 {
+                let cell = self.values[x][y];
+                if !cell.is_definitive() {
+                    for n in cell {
+                        if self.is_valid(x, y, n) {
+                            self.values[x][y].leave_only(n);
+                            if self.bruteforce_solve() {
+                                // solution was found, no need for trying anymore
+                                return true;
+                            }
+                            self.values[x][y] = cell;
+                        }
+                    }
+                    // have tried all possible numbers, none produced a valid solution, backtracking
+                    return false;
+                }
+            }
+        }
+        // the board is full, found a solution
+        true
+    }
+
+    fn is_valid(&self, x: usize, y: usize, n: u8) -> bool {
+        !self.col(x).contains(&n) && !self.row(y).contains(&n) && !self.square(x, y).contains(&n)
+    }
+
     fn col(&self, x: usize) -> Vec<u8> {
         self.values[x]
             .iter()
