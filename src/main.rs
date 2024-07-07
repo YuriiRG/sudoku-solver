@@ -66,8 +66,14 @@ impl SolvingCell {
                 self.0
                     .iter()
                     .enumerate()
-                    .find_map(|(i, &is_candidate)| if is_candidate { Some(i) } else { None })
-                    .unwrap() as u8,
+                    .find_map(|(i, &is_candidate)| {
+                        if is_candidate {
+                            Some((i + 1) as u8)
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap(),
             )
         } else {
             None
