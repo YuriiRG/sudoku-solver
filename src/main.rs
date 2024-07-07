@@ -1,9 +1,4 @@
-use std::{
-    fs::OpenOptions,
-    io::{stdout, Write},
-    iter::repeat,
-    time::Instant,
-};
+use std::{io::stdout, iter::repeat};
 
 use anyhow::Result;
 
@@ -177,7 +172,6 @@ impl Iterator for SolvingCellIter {
 
 impl SolvingBoard {
     fn solve(&mut self) -> Result<(), ()> {
-        // let start = Instant::now();
         let mut board_changed = true;
 
         while board_changed {
@@ -239,12 +233,6 @@ impl SolvingBoard {
                 );
             }
         }
-        // writeln!(
-        //     OpenOptions::new().append(true).open("debug.txt").unwrap(),
-        //     "{}",
-        //     start.elapsed().as_micros(),
-        // )
-        // .unwrap();
         Ok(())
     }
 
@@ -273,7 +261,26 @@ impl SolvingBoard {
     }
 
     fn is_valid(&self, x: usize, y: usize, n: u8) -> bool {
-        !self.col(x).contains(&n) && !self.row(y).contains(&n) && !self.square(x, y).contains(&n)
+        for i in 0..9 {
+            if self.values[x][i].definitive_value() == Some(n) {
+                return false;
+            }
+        }
+        for i in 0..9 {
+            if self.values[i][y].definitive_value() == Some(n) {
+                return false;
+            }
+        }
+        let base_x = x / 3 * 3;
+        let base_y = y / 3 * 3;
+        for i in 0..9 {
+            let i_x = i % 3;
+            let i_y = i / 3;
+            if self.values[base_x + i_x][base_y + i_y].definitive_value() == Some(n) {
+                return false;
+            }
+        }
+        true
     }
 
     fn col(&self, x: usize) -> Vec<u8> {
