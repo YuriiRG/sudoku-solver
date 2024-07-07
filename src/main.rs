@@ -28,9 +28,64 @@ struct Board {
     values: [[Option<u8>; 9]; 9],
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 struct SolvingBoard {
-    values: [[Vec<u8>; 9]; 9],
+    values: [[SolvingCell; 9]; 9],
+}
+
+#[derive(Clone, Copy, Debug)]
+struct SolvingCell([bool; 9]);
+
+impl SolvingCell {
+    fn eliminate(&mut self, number: u8) {
+        self.0[number as usize - 1] = false;
+    }
+    fn leave_only(&mut self, number: u8) {
+        if self.0[number as usize - 1] {
+            self.0.fill(false);
+            self.0[number as usize - 1] = true;
+        } else {
+            panic!("{number} is not a candidate, therefore it cannot be left.");
+        }
+    }
+    fn contains(&self, number: u8) -> bool {
+        self.0[number as usize - 1]
+    }
+    fn count(&self) -> usize {
+        self.0.iter().filter(|&&is_candidate| is_candidate).count()
+    }
+    fn is_invalid(&self) -> bool {
+        self.0.iter().all(|&is_candidate| !is_candidate)
+    }
+    fn is_definitive(&self) -> bool {
+        self.count() == 1
+    }
+    fn definitive_value(&self) -> Option<u8> {
+        if self.is_definitive() {
+            Some(
+                self.0
+                    .iter()
+                    .enumerate()
+                    .find_map(|(i, &is_candidate)| if is_candidate { Some(i) } else { None })
+                    .unwrap() as u8,
+            )
+        } else {
+            None
+        }
+    }
+}
+
+impl Default for SolvingCell {
+    fn default() -> Self {
+        SolvingCell([true; 9])
+    }
+}
+impl From<u8> for SolvingCell {
+    fn from(value: u8) -> Self {
+        let mut cell = SolvingCell([false; 9]);
+        cell.0[value as usize - 1] = true;
+        cell
+    }
 }
 
 impl From<Board> for SolvingBoard {
@@ -38,8 +93,8 @@ impl From<Board> for SolvingBoard {
         Self {
             values: board.values.map(|col| {
                 col.map(|cell| match cell {
-                    Some(value) => vec![value],
-                    None => vec![1, 2, 3, 4, 5, 6, 7, 8, 9],
+                    Some(value) => value.into(),
+                    None => Default::default(),
                 })
             }),
         }
@@ -62,20 +117,20 @@ impl Board {
             // techinque where only one number is possible in a specific cell
             for x in 0..9 {
                 for y in 0..9 {
-                    let old_len = board.values[x][y].len();
-                    if old_len > 1 {
+                    let old_count = board.values[x][y].count();
+                    if old_count > 1 {
                         let col = board.col(x);
                         let row = board.row(y);
                         let square = board.square(x, y);
                         let candidates = &mut board.values[x][y];
                         for num in col.into_iter().chain(row).chain(square) {
-                            candidates.retain(|&candidate| candidate != num);
+                            candidates.eliminate(num);
                         }
-                        if candidates.len() < old_len {
-                            board_changed = true;
-                        }
-                        if candidates.is_empty() {
+                        if candidates.is_invalid() {
                             return Err(());
+                        }
+                        if candidates.count() < old_count {
+                            board_changed = true;
                         }
                     }
                 }
@@ -87,23 +142,17 @@ impl Board {
             let squares = board.all_squares();
             for n in 1..10 {
                 for group in cols.iter().chain(rows.iter()).chain(squares.iter()) {
-                    if group.iter().filter(|&cell| cell.2.contains(&n)).count() == 1 {
+                    if group.iter().filter(|&cell| cell.2.contains(n)).count() == 1 {
                         let (&x, &y) = group
                             .iter()
-                            .find_map(|(x, y, candidates)| {
-                                if candidates.contains(&n) {
-                                    Some((x, y))
-                                } else {
-                                    None
-                                }
-                            })
+                            .find_map(|(x, y, candidates)| candidates.contains(n).then_some((x, y)))
                             .unwrap();
-                        if board.values[x][y].len() > 1 {
-                            board.values[x][y].retain(|&candidate| candidate == n);
-                            board_changed = true;
-                        }
-                        if board.values[x][y].is_empty() {
+                        if board.values[x][y].is_invalid() {
                             return Err(());
+                        }
+                        if !board.values[x][y].is_definitive() {
+                            board.values[x][y].leave_only(n);
+                            board_changed = true;
                         }
                     }
                 }
@@ -113,9 +162,7 @@ impl Board {
         for x in 0..9 {
             for y in 0..9 {
                 let candidates = &board.values[x][y];
-                if candidates.len() == 1 {
-                    self.values[x][y] = Some(candidates[0]);
-                }
+                self.values[x][y] = candidates.definitive_value();
             }
         }
         Ok(())
@@ -126,55 +173,31 @@ impl SolvingBoard {
     fn col(&self, x: usize) -> Vec<u8> {
         self.values[x]
             .iter()
-            .filter_map(|candidates| {
-                if candidates.len() == 1 {
-                    Some(candidates[0])
-                } else {
-                    None
-                }
-            })
+            .filter_map(|candidates| candidates.definitive_value())
             .collect()
     }
     fn row(&self, y: usize) -> Vec<u8> {
         self.values
             .iter()
-            .filter_map(|col| {
-                if col[y].len() == 1 {
-                    Some(col[y][0])
-                } else {
-                    None
-                }
-            })
+            .filter_map(|col| col[y].definitive_value())
             .collect()
     }
     fn square(&self, x: usize, y: usize) -> Vec<u8> {
         self.values
             .iter()
             .enumerate()
-            .filter_map(|(i, col)| {
-                if i / 3 == x / 3 {
-                    Some(
-                        col.iter()
-                            .enumerate()
-                            .filter_map(|(i, candidates)| {
-                                if i / 3 == y / 3 && candidates.len() == 1 {
-                                    Some(candidates[0])
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect::<Vec<_>>(),
-                    )
-                } else {
-                    None
-                }
+            .filter(|(i, _)| (i / 3 == x / 3))
+            .flat_map(|(_, col)| {
+                col.iter()
+                    .enumerate()
+                    .filter(|(i, _)| i / 3 == y / 3)
+                    .filter_map(|(_, candidates)| candidates.definitive_value())
+                    .collect::<Vec<_>>()
             })
-            .flatten()
             .collect()
     }
-    fn all_cols(&self) -> Vec<Vec<(usize, usize, Vec<u8>)>> {
+    fn all_cols(&self) -> Vec<Vec<(usize, usize, SolvingCell)>> {
         self.values
-            .clone()
             .into_iter()
             .enumerate()
             .map(|(x, col)| {
@@ -185,43 +208,32 @@ impl SolvingBoard {
             })
             .collect()
     }
-    fn all_rows(&self) -> Vec<Vec<(usize, usize, Vec<u8>)>> {
+    fn all_rows(&self) -> Vec<Vec<(usize, usize, SolvingCell)>> {
         (0..9)
             .map(|y| {
                 self.values
                     .iter()
                     .enumerate()
-                    .map(|(x, col)| (x, y, col[y].clone()))
+                    .map(|(x, col)| (x, y, col[y]))
                     .collect()
             })
             .collect()
     }
-    fn all_squares(&self) -> Vec<Vec<(usize, usize, Vec<u8>)>> {
+    fn all_squares(&self) -> Vec<Vec<(usize, usize, SolvingCell)>> {
         (0..9)
             .map(|i| (i % 3, i / 3))
             .map(|(square_x, square_y)| {
                 self.values
                     .iter()
                     .enumerate()
-                    .filter_map(|(x, col)| {
-                        if x / 3 == square_x {
-                            Some(
-                                col.iter()
-                                    .enumerate()
-                                    .filter_map(|(y, cell)| {
-                                        if y / 3 == square_y {
-                                            Some((x, y, cell.clone()))
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                    .collect::<Vec<_>>(),
-                            )
-                        } else {
-                            None
-                        }
+                    .filter(|(x, _)| x / 3 == square_x)
+                    .flat_map(|(x, col)| {
+                        col.iter()
+                            .enumerate()
+                            .filter(|(y, _)| y / 3 == square_y)
+                            .map(|(y, &cell)| (x, y, cell))
+                            .collect::<Vec<_>>()
                     })
-                    .flatten()
                     .collect()
             })
             .collect()
@@ -256,34 +268,47 @@ fn main() -> Result<()> {
                 );
                 return;
             }
-            frame.render_widget(Block::new().borders(Borders::LEFT), Rect::new(3, 0, 1, 11));
-            frame.render_widget(Block::new().borders(Borders::LEFT), Rect::new(7, 0, 1, 11));
-            frame.render_widget(Block::new().borders(Borders::TOP), Rect::new(0, 3, 11, 1));
-            frame.render_widget(Block::new().borders(Borders::TOP), Rect::new(0, 7, 11, 1));
-            frame.render_widget(Paragraph::new(symbols::line::CROSS), Rect::new(3, 3, 1, 1));
-            frame.render_widget(Paragraph::new(symbols::line::CROSS), Rect::new(3, 7, 1, 1));
-            frame.render_widget(Paragraph::new(symbols::line::CROSS), Rect::new(7, 3, 1, 1));
-            frame.render_widget(Paragraph::new(symbols::line::CROSS), Rect::new(7, 7, 1, 1));
+
+            // draw the table
+            [
+                (3, 0, 1, 11, Borders::LEFT),
+                (7, 0, 1, 11, Borders::LEFT),
+                (0, 3, 11, 1, Borders::TOP),
+                (0, 7, 11, 1, Borders::TOP),
+            ]
+            .into_iter()
+            .for_each(|(x, y, width, height, border_type)| {
+                frame.render_widget(
+                    Block::new().borders(border_type),
+                    Rect::new(x, y, width, height),
+                );
+            });
+            [(3, 3, 1, 1), (3, 7, 1, 1), (7, 3, 1, 1), (7, 7, 1, 1)]
+                .into_iter()
+                .for_each(|(x, y, width, height)| {
+                    frame.render_widget(
+                        Paragraph::new(symbols::line::CROSS),
+                        Rect::new(x, y, width, height),
+                    );
+                });
+
             let main_layout =
                 Layout::horizontal([Constraint::Length(12), Constraint::Min(0)]).split(frame_size);
             let instructions =
                 Layout::vertical(repeat(Constraint::Length(1)).take(4)).split(main_layout[1]);
-            frame.render_widget(
-                Paragraph::new(Line::from(vec!["Navigation ".into(), "<Arrows>".bold()])),
-                instructions[0],
-            );
-            frame.render_widget(
-                Paragraph::new(Line::from(vec!["Solve ".into(), "<S>".bold()])),
-                instructions[1],
-            );
-            frame.render_widget(
-                Paragraph::new(Line::from(vec!["Reset ".into(), "<R>".bold()])),
-                instructions[2],
-            );
-            frame.render_widget(
-                Paragraph::new(Line::from(vec!["Quit ".into(), "<Q>".bold()])),
-                instructions[3],
-            );
+
+            // draw the instructions
+            [
+                vec!["Navigation ".into(), "<Arrows>".bold()],
+                vec!["Solve ".into(), "<S>".bold()],
+                vec!["Reset ".into(), "<R>".bold()],
+                vec!["Quit ".into(), "<Q>".bold()],
+            ]
+            .into_iter()
+            .enumerate()
+            .for_each(|(i, line)| {
+                frame.render_widget(Paragraph::new(Line::from(line)), instructions[i])
+            });
             for x in 0..9 {
                 for y in 0..9 {
                     let position = Rect::new(x + x / 3, y + y / 3, 1, 1);
@@ -307,42 +332,18 @@ fn main() -> Result<()> {
                 }
                 match key.code {
                     KeyCode::Char('q') => break,
-                    KeyCode::Right => {
-                        app.selected.0 =
-                            ((app.selected.0 as i16).wrapping_add(1).rem_euclid(9)) as u16
-                    }
-                    KeyCode::Left => {
-                        app.selected.0 =
-                            ((app.selected.0 as i16).wrapping_sub(1).rem_euclid(9)) as u16
-                    }
-                    KeyCode::Down => {
-                        app.selected.1 =
-                            ((app.selected.1 as i16).wrapping_add(1).rem_euclid(9)) as u16
-                    }
-                    KeyCode::Up => {
-                        app.selected.1 =
-                            ((app.selected.1 as i16).wrapping_sub(1).rem_euclid(9)) as u16
-                    }
+                    KeyCode::Right => app.selected.0 = modulo_add(app.selected.0, 1, 9),
+                    KeyCode::Left => app.selected.0 = modulo_add(app.selected.0, -1, 9),
+                    KeyCode::Down => app.selected.1 = modulo_add(app.selected.1, 1, 9),
+                    KeyCode::Up => app.selected.1 = modulo_add(app.selected.1, -1, 9),
                     KeyCode::Char(' ') => {
                         app.board.set(app.selected, None);
-                        if app.selected.0 < 8 {
-                            app.selected.0 += 1;
-                        } else {
-                            app.selected.0 = 0;
-                            app.selected.1 =
-                                ((app.selected.1 as i16).wrapping_add(1).rem_euclid(9)) as u16
-                        }
+                        app.selected = inc_carry_over(app.selected, 9);
                     }
                     KeyCode::Char(character @ '1'..='9') => {
                         app.board
                             .set(app.selected, Some(character.to_digit(10).unwrap() as u8));
-                        if app.selected.0 < 8 {
-                            app.selected.0 += 1;
-                        } else {
-                            app.selected.0 = 0;
-                            app.selected.1 =
-                                ((app.selected.1 as i16).wrapping_add(1).rem_euclid(9)) as u16
-                        }
+                        app.selected = inc_carry_over(app.selected, 9);
                     }
                     KeyCode::Char('s') => {
                         match app.board.solve() {
@@ -362,4 +363,18 @@ fn main() -> Result<()> {
     stdout().execute(LeaveAlternateScreen)?;
     disable_raw_mode()?;
     Ok(())
+}
+
+fn modulo_add(value: u16, add: i32, modulo: u16) -> u16 {
+    ((value as i32) + add).rem_euclid(modulo as i32) as u16
+}
+
+fn inc_carry_over((mut x, mut y): (u16, u16), modulo: u16) -> (u16, u16) {
+    if x < modulo - 1 {
+        x += 1;
+    } else {
+        x = 0;
+        y = modulo_add(y, 1, modulo)
+    }
+    (x, y)
 }
