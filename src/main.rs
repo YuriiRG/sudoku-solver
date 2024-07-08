@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use std::{io::stdout, iter::repeat};
 
 use anyhow::Result;
@@ -23,17 +26,17 @@ struct App {
     board: Board,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct Board {
     values: [[Option<u8>; 9]; 9],
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct SolvingBoard {
     values: [[SolvingCell; 9]; 9],
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct SolvingCell([bool; 9]);
 
 impl SolvingCell {
@@ -174,6 +177,21 @@ impl SolvingBoard {
     fn solve(&mut self) -> Result<(), ()> {
         let mut board_changed = true;
 
+        // validate the board
+        for x in 0..9 {
+            for y in 0..9 {
+                let cell = self.values[x][y];
+                if let Some(n) = cell.definitive_value() {
+                    self.values[x][y] = Default::default();
+                    let is_valid_cell = self.is_valid(x, y, n);
+                    self.values[x][y] = cell;
+                    if !is_valid_cell {
+                        return Err(());
+                    }
+                }
+            }
+        }
+
         while board_changed {
             board_changed = false;
             // techinque where only one number is possible in a specific cell
@@ -223,7 +241,7 @@ impl SolvingBoard {
 
         let bruteforce_success = self.bruteforce_solve();
         if !bruteforce_success {
-            panic!("Bruteforce wasn't successful. It's impossible, so there's a bug in the code.");
+            return Err(());
         }
         Ok(())
     }
