@@ -220,18 +220,10 @@ impl SolvingBoard {
                 }
             }
         }
-        if !self
-            .values
-            .iter()
-            .map(|col| col.iter().all(|cell| cell.is_definitive()))
-            .all(|is_definitive| is_definitive)
-        {
-            let bruteforce_success = self.bruteforce_solve();
-            if !bruteforce_success {
-                panic!(
-                    "Bruteforce wasn't successful. It's impossible, so there's a bug in the code."
-                );
-            }
+
+        let bruteforce_success = self.bruteforce_solve();
+        if !bruteforce_success {
+            panic!("Bruteforce wasn't successful. It's impossible, so there's a bug in the code.");
         }
         Ok(())
     }
