@@ -429,17 +429,14 @@ fn main() -> Result<()> {
             ]
             .into_iter()
             .enumerate()
-            .for_each(|(i, line)| {
-                frame.render_widget(Paragraph::new(Line::from(line)), instructions[i])
-            });
+            .for_each(|(i, line)| frame.render_widget(Line::from(line), instructions[i]));
             for x in 0..9 {
                 for y in 0..9 {
                     let position = Rect::new(x + x / 3, y + y / 3, 1, 1);
-                    let mut cell = Paragraph::new(
-                        app.board
-                            .get((x, y))
-                            .map_or("-".to_text(), |num| num.to_text()),
-                    );
+                    let mut cell = app
+                        .board
+                        .get((x, y))
+                        .map_or("-".to_text(), |num| num.to_text());
                     if x == app.selected.0 && y == app.selected.1 {
                         cell = cell.reversed();
                     }
